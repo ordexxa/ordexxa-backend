@@ -45,6 +45,12 @@
             <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
 
+        <!-- Validación JWT / Auth0 -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-jose</artifactId>
+        </dependency>
+
         <!-- Cifrado de contraseñas -->
         <dependency>
             <groupId>org.springframework.security</groupId>

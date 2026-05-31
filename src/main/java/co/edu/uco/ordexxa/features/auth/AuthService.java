@@ -12,11 +12,17 @@ import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -42,6 +48,14 @@ public class AuthService {
 
     @Value("${ordexxa.auth.show-verification-code-in-console:false}")
     private boolean showVerificationCodeInConsole;
+
+    @Value("${AUTH0_ISSUER_URI:}")
+    private String auth0IssuerUri;
+
+    @Value("${AUTH0_AUDIENCE:}")
+    private String auth0Audience;
+
+    private JwtDecoder auth0JwtDecoder;
 
     public AuthService(
             final UserAccountJpaRepository userAccountJpaRepository,
@@ -275,6 +289,11 @@ public class AuthService {
     public UserAccountEntity validateAuthenticatedToken(final String authorizationHeader) {
         final String token = extractBearerToken(authorizationHeader);
 
+        final Optional<UserAccountEntity> auth0User = validateAuth0Token(token);
+        if (auth0User.isPresent()) {
+            return auth0User.get();
+        }
+
         final UserAccountEntity user = userAccountJpaRepository.findByCurrentToken(token)
                 .orElseThrow(() -> new SecurityException(message("ordexxa.security.token.invalidOrExpired")));
 
@@ -296,6 +315,93 @@ public class AuthService {
         }
 
         return user;
+    }
+
+    private Optional<UserAccountEntity> validateAuth0Token(final String token) {
+        if (!isAuth0Enabled() || !isJwtToken(token)) {
+            return Optional.empty();
+        }
+
+        try {
+            final Jwt jwt = getAuth0JwtDecoder().decode(token);
+            validateAuth0Audience(jwt);
+
+            final String subject = jwt.getSubject();
+            final String email = firstNonBlank(
+                    jwt.getClaimAsString("email"),
+                    subject + "@auth0.ordexxa.local"
+            );
+            final String fullName = firstNonBlank(
+                    jwt.getClaimAsString("name"),
+                    jwt.getClaimAsString("nickname"),
+                    email
+            );
+
+            final UserAccountEntity user = new UserAccountEntity();
+            user.setId(UUID.nameUUIDFromBytes(("auth0:" + subject).getBytes(StandardCharsets.UTF_8)));
+            user.setFullName(fullName);
+            user.setEmail(email);
+            user.setPasswordHash("AUTH0_EXTERNAL_IDENTITY");
+            user.setRole(ROLE_ADMIN);
+            user.setVerified(Boolean.TRUE);
+            user.setCreatedAt(LocalDateTime.now());
+            user.setVerifiedAt(LocalDateTime.now());
+            user.setFailedLoginAttempts(0);
+            user.setLockedUntil(null);
+            user.setCurrentToken(null);
+            user.setTokenIssuedAt(null);
+
+            return Optional.of(user);
+        } catch (JwtException | IllegalArgumentException exception) {
+            throw new SecurityException(message("ordexxa.security.token.invalidOrExpired"), exception);
+        }
+    }
+
+    private boolean isAuth0Enabled() {
+        return auth0IssuerUri != null
+                && !auth0IssuerUri.isBlank()
+                && auth0Audience != null
+                && !auth0Audience.isBlank();
+    }
+
+    private boolean isJwtToken(final String token) {
+        return token != null && token.split("\\.", -1).length == 3;
+    }
+
+    private JwtDecoder getAuth0JwtDecoder() {
+        if (auth0JwtDecoder == null) {
+            auth0JwtDecoder = NimbusJwtDecoder.withJwkSetUri(normalizedAuth0IssuerUri() + ".well-known/jwks.json").build();
+        }
+
+        return auth0JwtDecoder;
+    }
+
+    private String normalizedAuth0IssuerUri() {
+        String issuer = auth0IssuerUri.trim();
+
+        if (!issuer.endsWith("/")) {
+            issuer = issuer + "/";
+        }
+
+        return issuer;
+    }
+
+    private void validateAuth0Audience(final Jwt jwt) {
+        final List<String> audiences = jwt.getAudience();
+
+        if (audiences == null || !audiences.contains(auth0Audience)) {
+            throw new SecurityException(message("ordexxa.security.token.invalidOrExpired"));
+        }
+    }
+
+    private String firstNonBlank(final String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+
+        return "Usuario Auth0";
     }
 
     private void validateAccountIsNotLocked(final UserAccountEntity user) {
