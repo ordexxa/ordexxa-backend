@@ -21,6 +21,19 @@
     </properties>
 
     <dependencies>
+        <!-- Azure Key Vault / Vault de secretos -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-identity</artifactId>
+            <version>1.13.3</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-security-keyvault-secrets</artifactId>
+            <version>4.9.2</version>
+        </dependency>
+
         <!-- Observabilidad / monitoreo -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
