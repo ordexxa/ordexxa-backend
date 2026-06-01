@@ -7,6 +7,9 @@ public record VaultStatusResponse(
         boolean connected,
         String vaultEndpoint,
         String proofSecretName,
+        String mailPasswordSecretName,
+        boolean mailPasswordSecretConfigured,
+        boolean mailPasswordSecretReadable,
         String message
 ) {
 }

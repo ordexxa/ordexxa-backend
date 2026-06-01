@@ -1,106 +1,80 @@
 package co.edu.uco.ordexxa.features.ops;
 
-import com.azure.identity.ClientCertificateCredentialBuilder;
-import com.azure.security.keyvault.secrets.SecretClientBuilder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
 public class VaultStatusService {
 
-    private final boolean enabled;
-    private final String endpoint;
-    private final String tenantId;
-    private final String clientId;
-    private final String clientCertificatePath;
+    private final AzureKeyVaultSecretReader secretReader;
     private final String proofSecretName;
+    private final String mailPasswordSecretName;
 
     public VaultStatusService(
-            @Value("${ordexxa.vault.enabled:false}") boolean enabled,
-            @Value("${ordexxa.vault.endpoint:}") String endpoint,
-            @Value("${ordexxa.vault.tenant-id:}") String tenantId,
-            @Value("${ordexxa.vault.client-id:}") String clientId,
-            @Value("${ordexxa.vault.client-certificate-path:}") String clientCertificatePath,
-            @Value("${ordexxa.vault.proof-secret-name:ordexxa-vault-proof}") String proofSecretName
+            final AzureKeyVaultSecretReader secretReader,
+            @Value("${ordexxa.vault.proof-secret-name:ordexxa-vault-proof}") String proofSecretName,
+            @Value("${ordexxa.vault.mail-password-secret-name:}") String mailPasswordSecretName
     ) {
-        this.enabled = enabled;
-        this.endpoint = endpoint;
-        this.tenantId = tenantId;
-        this.clientId = clientId;
-        this.clientCertificatePath = clientCertificatePath;
+        this.secretReader = secretReader;
         this.proofSecretName = proofSecretName;
+        this.mailPasswordSecretName = mailPasswordSecretName;
     }
 
     public VaultStatusResponse checkStatus() {
-        if (!enabled) {
+        if (!secretReader.isEnabled()) {
             return new VaultStatusResponse(
                     "Azure Key Vault",
                     false,
                     false,
                     false,
-                    safeEndpoint(),
+                    secretReader.safeEndpoint(),
                     proofSecretName,
+                    mailPasswordSecretName,
+                    !isBlank(mailPasswordSecretName),
+                    false,
                     "Vault integration is disabled. The application is running with environment variables."
             );
         }
 
-        if (isBlank(endpoint) || isBlank(tenantId) || isBlank(clientId)
-                || isBlank(clientCertificatePath) || isBlank(proofSecretName)) {
+        if (!secretReader.isConfigured()) {
             return new VaultStatusResponse(
                     "Azure Key Vault",
                     true,
                     false,
                     false,
-                    safeEndpoint(),
+                    secretReader.safeEndpoint(),
                     proofSecretName,
+                    mailPasswordSecretName,
+                    !isBlank(mailPasswordSecretName),
+                    false,
                     "Vault integration is enabled but required configuration is missing."
             );
         }
 
-        try {
-            var credential = new ClientCertificateCredentialBuilder()
-                    .tenantId(tenantId)
-                    .clientId(clientId)
-                    .pemCertificate(clientCertificatePath)
-                    .build();
+        final boolean proofSecretReadable = secretReader.readSecret(proofSecretName).isPresent();
+        final boolean mailSecretConfigured = !isBlank(mailPasswordSecretName);
+        final boolean mailSecretReadable = mailSecretConfigured
+                && secretReader.readSecret(mailPasswordSecretName).isPresent();
 
-            var client = new SecretClientBuilder()
-                    .vaultUrl(endpoint)
-                    .credential(credential)
-                    .buildClient();
+        final String message = proofSecretReadable
+                ? "Vault connection verified. Proof secret was read successfully."
+                : "Vault connection failed. Proof secret could not be read.";
 
-            var secret = client.getSecret(proofSecretName);
-            var connected = secret != null && !isBlank(secret.getValue());
-
-            return new VaultStatusResponse(
-                    "Azure Key Vault",
-                    true,
-                    true,
-                    connected,
-                    safeEndpoint(),
-                    proofSecretName,
-                    connected
-                            ? "Vault connection verified. Proof secret was read successfully."
-                            : "Vault connection reached, but proof secret value was empty."
-            );
-        } catch (RuntimeException exception) {
-            return new VaultStatusResponse(
-                    "Azure Key Vault",
-                    true,
-                    true,
-                    false,
-                    safeEndpoint(),
-                    proofSecretName,
-                    "Vault connection failed: " + exception.getClass().getSimpleName()
-            );
-        }
+        return new VaultStatusResponse(
+                "Azure Key Vault",
+                true,
+                true,
+                proofSecretReadable,
+                secretReader.safeEndpoint(),
+                proofSecretName,
+                mailPasswordSecretName,
+                mailSecretConfigured,
+                mailSecretReadable,
+                message
+        );
     }
 
-    private String safeEndpoint() {
-        return endpoint == null ? "" : endpoint;
-    }
-
-    private static boolean isBlank(String value) {
+    private static boolean isBlank(final String value) {
         return value == null || value.isBlank();
     }
 }
