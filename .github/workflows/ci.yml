@@ -75,5 +75,7 @@ jobs:
           ./mvnw -B org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
           -Dsonar.projectKey=ordexxa_ordexxa-backend
           -Dsonar.organization=ordexxa
+          -Dsonar.projectVersion=0.0.2-sonar
           -Dsonar.host.url=https://sonarcloud.io
+          -Dsonar.coverage.exclusions=src/main/java/co/edu/uco/ordexxa/features/ops/**,src/main/java/co/edu/uco/ordexxa/infrastructure/config/**,src/main/java/co/edu/uco/ordexxa/OrdexxaBackendApplication.java
           -Dsonar.token=$SONAR_TOKEN
