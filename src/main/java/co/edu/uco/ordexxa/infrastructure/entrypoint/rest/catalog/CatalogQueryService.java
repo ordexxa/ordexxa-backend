@@ -1,6 +1,5 @@
 package co.edu.uco.ordexxa.infrastructure.entrypoint.rest.catalog;
 
-import co.edu.uco.ordexxa.infrastructure.persistence.repository.sql.jpa.entity.CityEntity;
 import co.edu.uco.ordexxa.infrastructure.persistence.repository.sql.jpa.entity.DepartmentEntity;
 import co.edu.uco.ordexxa.infrastructure.persistence.repository.sql.jpa.entity.DocumentTypeEntity;
 import co.edu.uco.ordexxa.infrastructure.persistence.repository.sql.jpa.entity.NotificationTemplateEntity;
@@ -13,9 +12,10 @@ import co.edu.uco.ordexxa.infrastructure.persistence.repository.sql.jpa.reposito
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Service
 public class CatalogQueryService {
@@ -58,24 +58,28 @@ public class CatalogQueryService {
     @Cacheable(cacheNames = "catalog:departments")
     public List<DepartmentCatalogResponse> getDepartments() {
         final List<DepartmentEntity> departments = departmentRepository.findByActiveTrueOrderByNameAsc();
+        final Map<String, List<CityCatalogResponse>> citiesByDepartment = new LinkedHashMap<>();
 
-        final Map<String, List<CityCatalogResponse>> citiesByDepartment = cityRepository.findActiveCitiesWithActiveDepartment()
-                .stream()
-                .collect(Collectors.groupingBy(
-                        city -> city.getDepartment().getCode(),
-                        Collectors.mapping(this::toCityResponse, Collectors.toList())
-                ));
+        for (Object[] row : cityRepository.findActiveCityRowsWithActiveDepartment()) {
+            final Long cityId = ((Number) row[0]).longValue();
+            final String cityName = String.valueOf(row[1]);
+            final String departmentCode = String.valueOf(row[2]);
 
-        return departments.stream()
-                .map(department -> new DepartmentCatalogResponse(
-                        department.getCode(),
-                        department.getName(),
-                        citiesByDepartment.getOrDefault(department.getCode(), List.of())
-                ))
-                .toList();
-    }
+            citiesByDepartment
+                    .computeIfAbsent(departmentCode, ignored -> new ArrayList<>())
+                    .add(new CityCatalogResponse(cityId, cityName));
+        }
 
-    private CityCatalogResponse toCityResponse(final CityEntity city) {
-        return new CityCatalogResponse(city.getId(), city.getName());
+        final List<DepartmentCatalogResponse> response = new ArrayList<>();
+
+        for (DepartmentEntity department : departments) {
+            response.add(new DepartmentCatalogResponse(
+                    department.getCode(),
+                    department.getName(),
+                    citiesByDepartment.getOrDefault(department.getCode(), List.of())
+            ));
+        }
+
+        return response;
     }
 }

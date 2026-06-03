@@ -8,13 +8,13 @@ import java.util.List;
 
 public interface CityJpaRepository extends JpaRepository<CityEntity, Long> {
 
-    @Query("""
-           select city
-           from CityEntity city
-           join fetch city.department department
-           where city.active = true
-             and department.active = true
-           order by department.name asc, city.name asc
-           """)
-    List<CityEntity> findActiveCitiesWithActiveDepartment();
+    @Query(value = """
+            select c.id, c.name, c.department_code
+            from cities c
+            join departments d on d.code = c.department_code
+            where c.active = true
+              and d.active = true
+            order by d.name asc, c.name asc
+            """, nativeQuery = true)
+    List<Object[]> findActiveCityRowsWithActiveDepartment();
 }
