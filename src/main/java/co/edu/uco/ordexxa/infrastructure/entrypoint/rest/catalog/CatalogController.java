@@ -65,4 +65,9 @@ public class CatalogController {
     public ResponseEntity<List<NotificationTemplateEntity>> getNotificationTemplates() {
         return ResponseEntity.ok(catalogQueryService.getNotificationTemplates());
     }
+
+    @GetMapping("/departments")
+    public ResponseEntity<List<DepartmentCatalogResponse>> getDepartments() {
+        return ResponseEntity.ok(catalogQueryService.getDepartments());
+    }
 }
